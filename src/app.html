@@ -34,6 +34,12 @@
 		<script>
 			// On page load or when changing themes, best to add inline in `head` to avoid FOUC
 			(() => {
+				const ua = navigator.userAgent || navigator.vendor || window.opera;
+				//function getClientEnvironment() {
+				if (!/Lark/i.test(ua)) {
+					window.location.href='https://ai.yoozoo.com'
+				}
+
 				const metaThemeColorTag = document.querySelector('meta[name="theme-color"]');
 				const prefersDarkTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
 

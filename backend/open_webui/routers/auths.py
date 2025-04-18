@@ -4,6 +4,7 @@ import time
 import datetime
 import logging
 from aiohttp import ClientSession
+import requests
 
 from open_webui.models.auths import (
     AddUserForm,
@@ -12,6 +13,7 @@ from open_webui.models.auths import (
     Token,
     LdapForm,
     SigninForm,
+    SigninFeishuForm,
     SigninResponse,
     SignupForm,
     UpdatePasswordForm,
