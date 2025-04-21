@@ -354,22 +354,42 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             )
         user = Auths.authenticate_user_by_trusted_header(trusted_email)
     elif WEBUI_AUTH == False:
-        admin_email = "admin@localhost"
-        admin_password = "admin"
+        email = form_data.email.lower()
+        if not email:
+            raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_REQUIRED)
 
-        if Users.get_user_by_email(admin_email.lower()):
-            user = Auths.authenticate_user(admin_email.lower(), admin_password)
-        else:
-            if Users.get_num_users() != 0:
-                raise HTTPException(400, detail=ERROR_MESSAGES.EXISTING_USERS)
+        # 邮箱格式验证
+        if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email):
+            raise HTTPException(status_code=400, detail=ERROR_MESSAGES.INVALID_EMAIL_FORMAT)
 
-            await signup(
-                request,
-                response,
-                SignupForm(email=admin_email, password=admin_password, name="User"),
-            )
+        # 获取头像
+        try:
+            image_url_res = requests.post("http://qadataai.youzu.com/fsLogin/getAvatar",
+                                          json={"email": email}).json().get("data", None)
+            image_url = image_url_res.get("avatarUrl") if image_url_res.get("avatarUrl", None) else "/user.png"
+        except Exception as err:
+            log.info(f"Post user image url failed: {str(err)}")
+            # print(err)
+            image_url = "/user.png"
+            # raise HTTPException(400, detail=f"自动创建用户失败: {str(e)}")
 
-            user = Auths.authenticate_user(admin_email.lower(), admin_password)
+        user = Auths.authenticate_user_without_password(email)
+        if not user:
+            try:
+                default_name = email.split("@")[0]
+                await signup_feishu(
+                    request,
+                    response,
+                    SignupForm(
+                        email=email,
+                        password="yoozoo",
+                        name=form_data.name if form_data.name else default_name,
+                        profile_image_url=image_url
+                    )
+                )
+                user = Users.get_user_by_email(email)
+            except Exception as e:
+                raise HTTPException(400, detail=f"自动创建用户失败: {str(e)}")
     else:
         user = Auths.authenticate_user(form_data.email.lower(), form_data.password)
 
