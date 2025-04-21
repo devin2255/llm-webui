@@ -148,6 +148,20 @@ class AuthsTable:
         except Exception:
             return None
 
+    def authenticate_user_without_password(self, email: str) -> Optional[UserModel]:
+        log.info(f"authenticate_user_without_password: {email}")
+        try:
+            with get_db() as db:
+                auth = db.query(Auth).filter_by(email=email, active=True).first()
+                if auth:
+                    user = Users.get_user_by_id(auth.id)
+                    return user
+                else:
+                    return None
+
+        except Exception:
+            return None
+
     def authenticate_user_by_api_key(self, api_key: str) -> Optional[UserModel]:
         log.info(f"authenticate_user_by_api_key: {api_key}")
         # if no api_key, return None
