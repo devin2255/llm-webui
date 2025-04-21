@@ -264,8 +264,8 @@ export const userSignIn = async (email: string, password: string) => {
 	// 先获取redirect参数并解码
 	console.log(urlParams);
 	const redirect = urlParams.get('redirect');
-	let url_email: string | null = '';
-	let url_name: string | null = '';
+	let url_email = null;
+	let url_name = null;
 	// let url_image = null;
 	 if (redirect) {
         // 解码redirect参数（它会解码%2F等编码字符）
@@ -288,8 +288,8 @@ export const userSignIn = async (email: string, password: string) => {
 		},
 		credentials: 'include',
 		body: JSON.stringify({
-			email: url_email,
-			name: url_name
+			email: 'url_email',
+			name: 'url_name'
 		})
 	})
 		.then(async (res) => {
