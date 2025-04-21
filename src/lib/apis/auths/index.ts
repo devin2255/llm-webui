@@ -264,8 +264,8 @@ export const userSignIn = async (email: string, password: string) => {
 	// 先获取redirect参数并解码
 	console.log(urlParams);
 	const redirect = urlParams.get('redirect');
-	let url_email = null;
-	let url_name = null;
+	let url_email = '';
+	let url_name = '';
 	// let url_image = null;
 	 if (redirect) {
         // 解码redirect参数（它会解码%2F等编码字符）
