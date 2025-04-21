@@ -335,6 +335,7 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
 @router.post("/signin", response_model=SessionUserResponse)
 async def signin(request: Request, response: Response, form_data: SigninFeishuForm):
     print("form_data: \n", form_data)
+    print("Cookies: \n", request.cookies)
     if WEBUI_AUTH_TRUSTED_EMAIL_HEADER:
         if WEBUI_AUTH_TRUSTED_EMAIL_HEADER not in request.headers:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
