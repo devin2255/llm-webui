@@ -265,9 +265,9 @@
 			{/if}
 		</div>
 
-		<div class="py-0.5">
-			<UpdatePassword />
-		</div>
+<!--		<div class="py-0.5">-->
+<!--			<UpdatePassword />-->
+<!--		</div>-->
 
 		<hr class="border-gray-50 dark:border-gray-850 my-2" />
 
