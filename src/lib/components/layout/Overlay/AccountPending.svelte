@@ -48,13 +48,13 @@
 						{$i18n.t('Check Again')}
 					</button>
 
-					<button
-						class="text-xs text-center w-full mt-2 text-gray-400 underline"
-						on:click={async () => {
-							localStorage.removeItem('token');
-							location.href = '/auth';
-						}}>{$i18n.t('Sign Out')}</button
-					>
+<!--					<button-->
+<!--						class="text-xs text-center w-full mt-2 text-gray-400 underline"-->
+<!--						on:click={async () => {-->
+<!--							localStorage.removeItem('token');-->
+<!--							location.href = '/auth';-->
+<!--						}}>{$i18n.t('Sign Out')}</button-->
+<!--					>-->
 				</div>
 			</div>
 		</div>
