@@ -215,8 +215,8 @@ WEBUI_BUILD_HASH = os.environ.get("WEBUI_BUILD_HASH", "dev-build")
 # DATA/FRONTEND BUILD DIR
 ####################################
 
-# DATA_DIR = Path(os.getenv("DATA_DIR", BACKEND_DIR / "data")).resolve()
-DATA_DIR = Path("/home/yoozoo-ai/docker/volumes/open-webui/_data").resolve()
+DATA_DIR = Path(os.getenv("DATA_DIR", BACKEND_DIR / "data")).resolve()
+# DATA_DIR = Path("/home/yoozoo-ai/docker/volumes/open-webui/_data").resolve()
 # DATA_DIR = "/home/yoozoo-ai/devin/test/volume/data"
 
 if FROM_INIT_PY:
