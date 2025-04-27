@@ -255,3 +255,17 @@ def get_admin_user(user=Depends(get_current_user)):
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
     return user
+
+
+# def decode_userinfo(userinfo: str):
+#     user = Users.get_user_by_api_key(api_key)
+#
+#     if user is None:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail=ERROR_MESSAGES.INVALID_TOKEN,
+#         )
+#     else:
+#         Users.update_user_last_active_by_id(user.id)
+#
+#     return user

@@ -26,6 +26,7 @@ from open_webui.constants import ERROR_MESSAGES, WEBHOOK_MESSAGES
 from open_webui.env import (
     WEBUI_AUTH,
     WEBUI_AUTH_TRUSTED_EMAIL_HEADER,
+    WEBUI_AUTH_TRUSTED_COOKIES,
     WEBUI_AUTH_TRUSTED_NAME_HEADER,
     WEBUI_AUTH_COOKIE_SAME_SITE,
     WEBUI_AUTH_COOKIE_SECURE,
@@ -336,8 +337,9 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
 async def signin(request: Request, response: Response, form_data: SigninFeishuForm):
     print("form_data: \n", form_data)
     print("Cookies: \n", request.cookies)
-    if WEBUI_AUTH_TRUSTED_EMAIL_HEADER:
-        if WEBUI_AUTH_TRUSTED_EMAIL_HEADER not in request.headers:
+    if WEBUI_AUTH_TRUSTED_COOKIES:
+        print(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES].lower())
+        if WEBUI_AUTH_TRUSTED_COOKIES not in request.cookies:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
 
         trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
