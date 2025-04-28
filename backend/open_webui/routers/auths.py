@@ -346,7 +346,7 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
         if WEBUI_AUTH_TRUSTED_COOKIES not in request.cookies:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
 
-        userinfo_token = request.cookies[WEBUI_AUTH_TRUSTED_COOKIES]
+        userinfo_token = unquote(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES])
         userinfo = json.loads(decrypt_userinfo(userinfo_token))
         # trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
         trusted_email = userinfo.get("email", None)
