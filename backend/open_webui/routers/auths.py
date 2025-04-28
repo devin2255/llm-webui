@@ -358,7 +358,7 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
         if isinstance(trusted_timestamp, (int, float)) and trusted_timestamp > 1e12:
             trusted_timestamp /= 1000.0
         current_time = time.time()
-        diff = abs(current_time - trusted_timestamp)
+        diff = abs(int(current_time) - int(trusted_timestamp))
         if diff > 86400:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TOKEN)
 
