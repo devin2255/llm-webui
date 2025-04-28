@@ -6,6 +6,7 @@ import logging
 from aiohttp import ClientSession
 import requests
 import json
+from urllib.parse import unquote
 
 from open_webui.models.auths import (
     AddUserForm,
@@ -340,7 +341,7 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
     print("form_data: \n", form_data)
     print("Cookies: \n", request.cookies)
     if WEBUI_AUTH_TRUSTED_COOKIES:
-        print(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES])
+        print(unquote(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES]))
 
         if WEBUI_AUTH_TRUSTED_COOKIES not in request.cookies:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
