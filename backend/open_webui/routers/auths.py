@@ -5,6 +5,7 @@ import datetime
 import logging
 from aiohttp import ClientSession
 import requests
+import json
 
 from open_webui.models.auths import (
     AddUserForm,
@@ -44,6 +45,7 @@ from open_webui.utils.auth import (
     get_verified_user,
     get_current_user,
     get_password_hash,
+    decrypt_userinfo
 )
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.access_control import get_permissions
@@ -338,22 +340,36 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
     print("form_data: \n", form_data)
     print("Cookies: \n", request.cookies)
     if WEBUI_AUTH_TRUSTED_COOKIES:
-        print(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES].lower())
+        print(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES])
+
         if WEBUI_AUTH_TRUSTED_COOKIES not in request.cookies:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
 
-        trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
-        trusted_name = trusted_email
-        if WEBUI_AUTH_TRUSTED_NAME_HEADER:
-            trusted_name = request.headers.get(
-                WEBUI_AUTH_TRUSTED_NAME_HEADER, trusted_email
-            )
+        userinfo_token = request.cookies[WEBUI_AUTH_TRUSTED_COOKIES]
+        userinfo = json.loads(decrypt_userinfo(userinfo_token))
+        # trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
+        trusted_email = userinfo.get("email", None)
+        # trusted_name = trusted_email
+        trusted_name = userinfo.get("name", trusted_email)
+        trusted_timestamp = userinfo.get("timestamp", None)
+        trusted_image_url = userinfo.get("avatar_url", "/user.png")
+        if isinstance(trusted_timestamp, (int, float)) and trusted_timestamp > 1e12:
+            trusted_timestamp /= 1000.0
+        current_time = time.time()
+        diff = abs(current_time - trusted_timestamp)
+        if diff > 86400:
+            raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TOKEN)
+
+        # if WEBUI_AUTH_TRUSTED_NAME_HEADER:
+        #     trusted_name = request.headers.get(
+        #         WEBUI_AUTH_TRUSTED_NAME_HEADER, trusted_email
+        #     )
         if not Users.get_user_by_email(trusted_email.lower()):
             await signup(
                 request,
                 response,
                 SignupForm(
-                    email=trusted_email, password=str(uuid.uuid4()), name=trusted_name
+                    email=trusted_email, password="yoozoo", name=trusted_name, profile_image_url=trusted_image_url
                 ),
             )
         user = Auths.authenticate_user_by_trusted_header(trusted_email)
