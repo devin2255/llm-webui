@@ -339,7 +339,7 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
 @router.post("/signin", response_model=SessionUserResponse)
 async def signin(request: Request, response: Response, form_data: SigninFeishuForm):
     # print("form_data: \n", form_data)
-    # print("Cookies: \n", request.cookies)
+    print("Cookies: \n", request.cookies)
     if WEBUI_AUTH_TRUSTED_COOKIES:
         # print(unquote(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES]))
 
@@ -349,7 +349,7 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
         userinfo_token = unquote(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES])
         userinfo = json.loads(decrypt_userinfo(userinfo_token))
         # trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
-        # print(userinfo)
+        print(userinfo)
         trusted_email = userinfo.get("email", None)
         # trusted_name = trusted_email
         trusted_name = userinfo.get("name", trusted_email)
