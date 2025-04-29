@@ -256,30 +256,6 @@ export const updateLdapServer = async (token: string = '', body: object) => {
 
 export const userSignIn = async (email: string, password: string) => {
 	let error = null;
-	const fullUrl = window.location.href;
-	// console.log(fullUrl);
-	const queryString = window.location.search;
-	// console.log(queryString);
-	const urlParams = new URLSearchParams(queryString);
-	// 先获取redirect参数并解码
-	// console.log(urlParams);
-	const redirect = urlParams.get('redirect');
-	let url_email = null;
-	let url_name = null;
-	// let url_image = null;
-	 if (redirect) {
-        // 解码redirect参数（它会解码%2F等编码字符）
-        const decodedRedirect = decodeURIComponent(redirect);
-        // 现在从解码后的字符串中提取url_email
-        const redirectParams = new URLSearchParams(decodedRedirect.split('?')[1] || '');
-				// console.log(redirectParams);
-        url_email = redirectParams.get('email');
-				url_name = redirectParams.get('name');
-				// url_image = redirectParams.get('image');
-    }
-	 // console.log('Extracted url_email:', url_email);
-	 // console.log('Extracted url_name:', url_name);
-	 // console.log('Extracted url_image:', url_image);
 
 	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/signin`, {
 		method: 'POST',
@@ -288,8 +264,8 @@ export const userSignIn = async (email: string, password: string) => {
 		},
 		credentials: 'include',
 		body: JSON.stringify({
-			email: url_email,
-			name: url_name
+			email: email,
+			name: password
 		})
 	})
 		.then(async (res) => {

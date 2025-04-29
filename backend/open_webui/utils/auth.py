@@ -8,6 +8,7 @@ import requests
 import os
 
 
+
 from datetime import datetime, timedelta
 import pytz
 from pytz import UTC
@@ -27,6 +28,16 @@ from fastapi import BackgroundTasks, Depends, HTTPException, Request, Response, 
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 
+import json
+import base64
+import hmac
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+
 
 logging.getLogger("passlib").setLevel(logging.ERROR)
 
@@ -35,6 +46,10 @@ log.setLevel(SRC_LOG_LEVELS["OAUTH"])
 
 SESSION_SECRET = WEBUI_SECRET_KEY
 ALGORITHM = "HS256"
+
+PRIVATE_KEY_PEM = '''-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCer8pCiQPBYD0HDUrHwVe0WJUAMSi1KOokZI9cS5w7zr1h/0f3viZWH67ZHn50eOK3UfjHc4VRlEEl+p2MBnFOz+W3vqnb7C0LSzCJ64+J0W+Nmh2mXz/a5CBqOpG5st3/qoLWnFm3dvdVuPSQ5viar9U1izO5DRRFuqG50UbpE98pBEx44dJo/XMRomfNq7Az3m5175nJzDzbnr+ZxANA8kVOf+C0/aUy+wEdXVnBSrqfP5w8Vw3JeUVOFaHChVy44DG/eDdtak9dFLojykn2E4zuLXZicGMvFP8eaxxEGxm+9BkRV1c6WAkzFM5EkOXw1awRcDJmnL2AvOZp7V+hAgMBAAECggEAAUQIMjsrDUASBIwh2FGNvEnHmHqL51QF+BfYP+V3f8+gmZdCcPKylhXHHIK+gfnT3x/3gsnEWrf6xA2Jc6w6e6UzYSGTc8ZgvpoRL0xydug1glTkHydb2EhhDM/eSTOoyykGRaV2Hr1DcErbIovBGGTGJ9juJu/4hSzdrOCDNwk3EQkQPlcFF0dWM4oZ2RhA9m6DdARsytklf3PuPfGJC64clNleaXv19HyVXEPD6x16wH0H3namShGREpVqROp1nKOb5iQMRLAsq6e2GUliEtP7jMz8dxrknEejnVRHBTmxCVn1ePW8nOLUaHWI7Rb8pmk/NWsXAu9f9zNaVVtzJQKBgQDaDe4vt7dRkp/LafMOd5NAkUPkqOJHbUqV/VnE5nXcnNonUiMTFwMCTxU03DTNMuUkLkt2iCrEccVu8D0BX3/KXJX5dfUmakxnm/u2baWdXWdY9/NlPPK2Ow+Bl3JoPG7IKs/t6Dd4si+UqurE3FvfiDc7Jyd++IRGpBrSH9fRxQKBgQC6TRirT0zRP+96arCBhQ77HSrRCjQ5noaf11Nz95uIHJw2fawhzFHV+BRlXZ919x++29GRz9U83tAMptH3BvcciP2uzImZhx+wQTd/XcIQhJEVVo+jKP0E5TUqx8ohmly704/eze86qT37L25JQRKBQV6YvwrojV7o7dy00F+ALQKBgFrcxSzzJBuEurt7mcGkiCK2pZDp4uianSLlIHwRAHn+jlUmP+FbjHBw3chaHlKHa75o4B8zXIbhVcEFsJYa4lhDvmbmBVKNpurhr8Dz7bgmTMNhBvZfsE/JSovYvN68l/knBeAADOVpcrRDiHKh1FLQIxuuFCIvkocRKO/4Pul1AoGAH5/4wRPcEWVODLTRs5rXuS7xVrzpsqJDbhzKUNRGdauNpP5eWvppJe5P4AktiYPiwq5j++GQ7B1SqeMjn1ByYEis76BO913ltjDL7/YFfHJUgo/IIEVT9iHGjbWOjXe7qDK4qHTC2G1kVSBvE0ZVktV67mj3vBRLeTTvk04P+B0CgYEAx6Ahiiq1jCI5aRXpIUB3IpvUj7i8AgjfhHY/tWpSBhw20QO6lgoZBF3XJAE9RQuhRozbvXrH0HmcnpmBHJHyQlkgyf5WTcyox6RPPANHz+Lw1WOWEQKcpK2Ij3QHC8u33Yc3uTZnuKVl01yq7GbzgxGAjqOkDgpVZYOBzfdbA1s=
+-----END PRIVATE KEY-----'''
 
 ##############
 # Auth Utils
@@ -255,3 +270,48 @@ def get_admin_user(user=Depends(get_current_user)):
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
     return user
+
+
+def decrypt_userinfo(token: str) -> str:
+    # 解析JSON token
+    payload = json.loads(token)
+    encrypted_aes_key_b64 = payload['encrypted_key']
+    iv_b64 = payload['iv']
+    ciphertext_b64 = payload['ciphertext']
+    hmac_b64 = payload['hmac']
+
+    # Base64解码各字段
+    encrypted_aes_key = base64.b64decode(encrypted_aes_key_b64)
+    iv = base64.b64decode(iv_b64)
+    ciphertext = base64.b64decode(ciphertext_b64)
+    received_hmac = base64.b64decode(hmac_b64)
+
+    # 加载RSA私钥
+    private_key = serialization.load_pem_private_key(
+        PRIVATE_KEY_PEM.encode(),
+        password=None,
+        backend=default_backend()
+    )
+
+    # RSA解密获取AES密钥
+    aes_key_bytes = private_key.decrypt(
+        encrypted_aes_key,
+        asym_padding.OAEP(
+            mgf=asym_padding.MGF1(algorithm=hashes.SHA1()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+    # 验证HMAC
+    hmac_calculator = hmac.new(aes_key_bytes, ciphertext, 'sha256')
+    calculated_hmac = hmac_calculator.digest()
+    if not hmac.compare_digest(calculated_hmac, received_hmac):
+        raise ValueError("HMAC verification failed")
+
+    # AES解密
+    cipher = AES.new(aes_key_bytes, AES.MODE_CBC, iv=iv)
+    decrypted_data = cipher.decrypt(ciphertext)
+    decrypted_data = unpad(decrypted_data, AES.block_size)
+
+    return decrypted_data.decode('utf-8')
