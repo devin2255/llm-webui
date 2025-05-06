@@ -265,7 +265,7 @@ export const userSignIn = async (email: string, password: string) => {
 		credentials: 'include',
 		body: JSON.stringify({
 			email: email,
-			name: password
+			password: password
 		})
 	})
 		.then(async (res) => {
@@ -326,7 +326,6 @@ export const userSignUp = async (
 
 export const userSignOut = async () => {
 	let error = null;
-	// throw '飞书版本不支持登出';
 
 	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/signout`, {
 		method: 'GET',
@@ -355,7 +354,8 @@ export const addUser = async (
 	name: string,
 	email: string,
 	password: string,
-	role: string = 'pending'
+	role: string = 'pending',
+	profile_image_url: null | string = null
 ) => {
 	let error = null;
 
@@ -369,7 +369,8 @@ export const addUser = async (
 			name: name,
 			email: email,
 			password: password,
-			role: role
+			role: role,
+			...(profile_image_url && { profile_image_url: profile_image_url })
 		})
 	})
 		.then(async (res) => {

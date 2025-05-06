@@ -1,12 +1,12 @@
+import json
 import re
 import uuid
 import time
 import datetime
 import logging
-from aiohttp import ClientSession
-import requests
-import json
 from urllib.parse import unquote
+
+from aiohttp import ClientSession
 
 from open_webui.models.auths import (
     AddUserForm,
@@ -32,20 +32,24 @@ from open_webui.env import (
     WEBUI_AUTH_TRUSTED_NAME_HEADER,
     WEBUI_AUTH_COOKIE_SAME_SITE,
     WEBUI_AUTH_COOKIE_SECURE,
+    WEBUI_AUTH_SIGNOUT_REDIRECT_URL,
     SRC_LOG_LEVELS,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response
 from open_webui.config import OPENID_PROVIDER_URL, ENABLE_OAUTH_SIGNUP, ENABLE_LDAP
 from pydantic import BaseModel
+
 from open_webui.utils.misc import parse_duration, validate_email_format
 from open_webui.utils.auth import (
+    decode_token,
     create_api_key,
     create_token,
     get_admin_user,
     get_verified_user,
     get_current_user,
     get_password_hash,
+    get_http_authorization_cred,
     decrypt_userinfo
 )
 from open_webui.utils.webhook import post_webhook
@@ -78,27 +82,29 @@ class SessionUserResponse(Token, UserResponse):
 async def get_session_user(
     request: Request, response: Response, user=Depends(get_current_user)
 ):
-    expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
-    expires_at = None
-    if expires_delta:
-        expires_at = int(time.time()) + int(expires_delta.total_seconds())
 
-    token = create_token(
-        data={"id": user.id},
-        expires_delta=expires_delta,
-    )
+    auth_header = request.headers.get("Authorization")
+    auth_token = get_http_authorization_cred(auth_header)
+    token = auth_token.credentials
+    data = decode_token(token)
 
-    datetime_expires_at = (
-        datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
-        if expires_at
-        else None
-    )
+    expires_at = data.get("exp")
+
+    if (expires_at is not None) and int(time.time()) > expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.INVALID_TOKEN,
+        )
 
     # Set the cookie token
     response.set_cookie(
         key="token",
         value=token,
-        expires=datetime_expires_at,
+        expires=(
+            datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+            if expires_at
+            else None
+        ),
         httponly=True,  # Ensures the cookie is not accessible via JavaScript
         samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
         secure=WEBUI_AUTH_COOKIE_SECURE,
@@ -236,7 +242,9 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
 
         entry = connection_app.entries[0]
         username = str(entry[f"{LDAP_ATTRIBUTE_FOR_USERNAME}"]).lower()
-        email = entry[f"{LDAP_ATTRIBUTE_FOR_MAIL}"].value  # retrive the Attribute value
+        email = entry[
+            f"{LDAP_ATTRIBUTE_FOR_MAIL}"
+        ].value  # retrieve the Attribute value
         if not email:
             raise HTTPException(400, "User does not have a valid email address.")
         elif isinstance(email, str):
@@ -294,18 +302,30 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
             user = Auths.authenticate_user_by_trusted_header(email)
 
             if user:
+                expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+                expires_at = None
+                if expires_delta:
+                    expires_at = int(time.time()) + int(expires_delta.total_seconds())
+
                 token = create_token(
                     data={"id": user.id},
-                    expires_delta=parse_duration(
-                        request.app.state.config.JWT_EXPIRES_IN
-                    ),
+                    expires_delta=expires_delta,
                 )
 
                 # Set the cookie token
                 response.set_cookie(
                     key="token",
                     value=token,
+                    expires=(
+                        datetime.datetime.fromtimestamp(
+                            expires_at, datetime.timezone.utc
+                        )
+                        if expires_at
+                        else None
+                    ),
                     httponly=True,  # Ensures the cookie is not accessible via JavaScript
+                    samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+                    secure=WEBUI_AUTH_COOKIE_SECURE,
                 )
 
                 user_permissions = get_permissions(
@@ -315,6 +335,7 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
                 return {
                     "token": token,
                     "token_type": "Bearer",
+                    "expires_at": expires_at,
                     "id": user.id,
                     "email": user.email,
                     "name": user.name,
@@ -341,8 +362,6 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
     # print("form_data: \n", form_data)
     # print("Cookies: \n", request.cookies)
     if WEBUI_AUTH_TRUSTED_COOKIES:
-        # print(unquote(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES]))
-
         if WEBUI_AUTH_TRUSTED_COOKIES not in request.cookies:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
 
@@ -376,42 +395,22 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
             )
         user = Auths.authenticate_user_by_trusted_header(trusted_email)
     elif WEBUI_AUTH == False:
-        email = form_data.email.lower()
-        if not email:
-            raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_REQUIRED)
+        admin_email = "admin@localhost"
+        admin_password = "admin"
 
-        # 邮箱格式验证
-        if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email):
-            raise HTTPException(status_code=400, detail=ERROR_MESSAGES.INVALID_EMAIL_FORMAT)
+        if Users.get_user_by_email(admin_email.lower()):
+            user = Auths.authenticate_user(admin_email.lower(), admin_password)
+        else:
+            if Users.get_num_users() != 0:
+                raise HTTPException(400, detail=ERROR_MESSAGES.EXISTING_USERS)
 
-        # 获取头像
-        try:
-            image_url_res = requests.post("http://qadataai.youzu.com/fsLogin/getAvatar",
-                                          json={"email": email}).json().get("data", None)
-            image_url = image_url_res.get("avatarUrl") if image_url_res.get("avatarUrl", None) else "/user.png"
-        except Exception as err:
-            log.info(f"Post user image url failed: {str(err)}")
-            # print(err)
-            image_url = "/user.png"
-            # raise HTTPException(400, detail=f"自动创建用户失败: {str(e)}")
+            await signup(
+                request,
+                response,
+                SignupForm(email=admin_email, password=admin_password, name="User"),
+            )
 
-        user = Auths.authenticate_user_without_password(email)
-        if not user:
-            try:
-                default_name = email.split("@")[0]
-                await signup_feishu(
-                    request,
-                    response,
-                    SignupForm(
-                        email=email,
-                        password="yoozoo",
-                        name=form_data.name if form_data.name else default_name,
-                        profile_image_url=image_url
-                    )
-                )
-                user = Users.get_user_by_email(email)
-            except Exception as e:
-                raise HTTPException(400, detail=f"自动创建用户失败: {str(e)}")
+            user = Auths.authenticate_user(admin_email.lower(), admin_password)
     else:
         user = Auths.authenticate_user(form_data.email.lower(), form_data.password)
 
@@ -465,95 +464,6 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
 ############################
 # SignUp
 ############################
-
-@router.post("/signup_feishu", response_model=SessionUserResponse)
-async def signup_feishu(request: Request, response: Response, form_data: SignupForm):
-    if not validate_email_format(form_data.email.lower()):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_EMAIL_FORMAT
-        )
-
-    if Users.get_user_by_email(form_data.email.lower()):
-        raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_TAKEN)
-
-    try:
-        role = "user"
-
-        # The password passed to bcrypt must be 72 bytes or fewer. If it is longer, it will be truncated before hashing.
-        if len(form_data.password.encode("utf-8")) > 72:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                detail=ERROR_MESSAGES.PASSWORD_TOO_LONG,
-            )
-
-        hashed = get_password_hash(form_data.password)
-        user = Auths.insert_new_auth(
-            form_data.email.lower(),
-            hashed,
-            form_data.name,
-            form_data.profile_image_url,
-            role,
-        )
-
-        if user:
-            expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
-            expires_at = None
-            if expires_delta:
-                expires_at = int(time.time()) + int(expires_delta.total_seconds())
-
-            token = create_token(
-                data={"id": user.id},
-                expires_delta=expires_delta,
-            )
-
-            datetime_expires_at = (
-                datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
-                if expires_at
-                else None
-            )
-
-            # Set the cookie token
-            response.set_cookie(
-                key="token",
-                value=token,
-                expires=datetime_expires_at,
-                httponly=True,  # Ensures the cookie is not accessible via JavaScript
-                samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
-                secure=WEBUI_AUTH_COOKIE_SECURE,
-            )
-
-            if request.app.state.config.WEBHOOK_URL:
-                post_webhook(
-                    request.app.state.WEBUI_NAME,
-                    request.app.state.config.WEBHOOK_URL,
-                    WEBHOOK_MESSAGES.USER_SIGNUP(user.name),
-                    {
-                        "action": "signup",
-                        "message": WEBHOOK_MESSAGES.USER_SIGNUP(user.name),
-                        "user": user.model_dump_json(exclude_none=True),
-                    },
-                )
-
-            user_permissions = get_permissions(
-                user.id, request.app.state.config.USER_PERMISSIONS
-            )
-
-            return {
-                "token": token,
-                "token_type": "Bearer",
-                "expires_at": expires_at,
-                "id": user.id,
-                "email": user.email,
-                "name": user.name,
-                "role": user.role,
-                "profile_image_url": user.profile_image_url,
-                "permissions": user_permissions,
-            }
-        else:
-            raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_USER_ERROR)
-    except Exception as err:
-        log.error(f"Signup error: {str(err)}")
-        raise HTTPException(500, detail="An internal error occurred during signup.")
 
 
 @router.post("/signup", response_model=SessionUserResponse)
@@ -699,6 +609,12 @@ async def signout(request: Request, response: Response):
                     detail="Failed to sign out from the OpenID provider.",
                 )
 
+    if WEBUI_AUTH_SIGNOUT_REDIRECT_URL:
+        return RedirectResponse(
+            headers=response.headers,
+            url=WEBUI_AUTH_SIGNOUT_REDIRECT_URL,
+        )
+
     return {"status": True}
 
 
@@ -797,6 +713,7 @@ async def get_admin_config(request: Request, user=Depends(get_admin_user)):
         "ENABLE_COMMUNITY_SHARING": request.app.state.config.ENABLE_COMMUNITY_SHARING,
         "ENABLE_MESSAGE_RATING": request.app.state.config.ENABLE_MESSAGE_RATING,
         "ENABLE_CHANNELS": request.app.state.config.ENABLE_CHANNELS,
+        "ENABLE_NOTES": request.app.state.config.ENABLE_NOTES,
         "ENABLE_USER_WEBHOOKS": request.app.state.config.ENABLE_USER_WEBHOOKS,
     }
 
@@ -813,6 +730,7 @@ class AdminConfig(BaseModel):
     ENABLE_COMMUNITY_SHARING: bool
     ENABLE_MESSAGE_RATING: bool
     ENABLE_CHANNELS: bool
+    ENABLE_NOTES: bool
     ENABLE_USER_WEBHOOKS: bool
 
 
@@ -833,6 +751,7 @@ async def update_admin_config(
     )
 
     request.app.state.config.ENABLE_CHANNELS = form_data.ENABLE_CHANNELS
+    request.app.state.config.ENABLE_NOTES = form_data.ENABLE_NOTES
 
     if form_data.DEFAULT_USER_ROLE in ["pending", "user", "admin"]:
         request.app.state.config.DEFAULT_USER_ROLE = form_data.DEFAULT_USER_ROLE
@@ -857,11 +776,12 @@ async def update_admin_config(
         "ENABLE_API_KEY": request.app.state.config.ENABLE_API_KEY,
         "ENABLE_API_KEY_ENDPOINT_RESTRICTIONS": request.app.state.config.ENABLE_API_KEY_ENDPOINT_RESTRICTIONS,
         "API_KEY_ALLOWED_ENDPOINTS": request.app.state.config.API_KEY_ALLOWED_ENDPOINTS,
-        "ENABLE_CHANNELS": request.app.state.config.ENABLE_CHANNELS,
         "DEFAULT_USER_ROLE": request.app.state.config.DEFAULT_USER_ROLE,
         "JWT_EXPIRES_IN": request.app.state.config.JWT_EXPIRES_IN,
         "ENABLE_COMMUNITY_SHARING": request.app.state.config.ENABLE_COMMUNITY_SHARING,
         "ENABLE_MESSAGE_RATING": request.app.state.config.ENABLE_MESSAGE_RATING,
+        "ENABLE_CHANNELS": request.app.state.config.ENABLE_CHANNELS,
+        "ENABLE_NOTES": request.app.state.config.ENABLE_NOTES,
         "ENABLE_USER_WEBHOOKS": request.app.state.config.ENABLE_USER_WEBHOOKS,
     }
 
