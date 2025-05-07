@@ -64,11 +64,6 @@ class SigninForm(BaseModel):
     password: str
 
 
-class SigninFeishuForm(BaseModel):
-    email: str
-    password: str
-
-
 class LdapForm(BaseModel):
     user: str
     password: str
