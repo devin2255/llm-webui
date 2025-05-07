@@ -368,7 +368,7 @@ async def signin(request: Request, response: Response, form_data: SigninFeishuFo
         userinfo_token = unquote(request.cookies[WEBUI_AUTH_TRUSTED_COOKIES])
         userinfo = json.loads(decrypt_userinfo(userinfo_token))
         # trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
-        # print(userinfo)
+        print(userinfo)
         trusted_email = userinfo.get("email", None)
         # trusted_name = trusted_email
         trusted_name = userinfo.get("name", trusted_email)
