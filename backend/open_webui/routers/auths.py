@@ -364,8 +364,10 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
     print("form_data: \n", form_data)
     print("Cookies: \n", request.cookies)
     from fastapi.responses import RedirectResponse
+    print("重定向到百度")
     # return RedirectResponse(url="https://open.feishu.cn/open-apis/authen/v1/index?redirect_uri=https%3a%2f%2fqatsdataai.youzu.com%2ffsLogin%2fcallback&app_id=cli_9fb76055de77500c&state=123")
     return RedirectResponse(url="https://www.baidu.com")
+    print("重定向后续流程")
     if WEBUI_AUTH_TRUSTED_COOKIES:
         if WEBUI_AUTH_TRUSTED_COOKIES not in request.cookies:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
